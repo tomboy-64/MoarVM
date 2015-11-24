@@ -76,6 +76,34 @@ MVM_PUBLIC MVMCallsite *MVM_callsite_get_common(MVMThreadContext *tc, MVMCommonC
     }
 }
 
+int MVM_callsite_is_common(MVMCallsite *cs) {
+    return cs == &null_args_callsite    ||
+           cs == &inv_arg_callsite      ||
+           cs == &two_args_callsite     ||
+           cs == &methnotfound_callsite ||
+           cs == &findmeth_callsite     ||
+           cs == &typecheck_callsite    ||
+           cs == &obj_int_callsite      ||
+           cs == &obj_num_callsite      ||
+           cs == &obj_str_callsite;
+}
+
+void MVM_callsite_destroy(MVMCallsite *cs) {
+    if (cs->flag_count) {
+        MVM_free(cs->arg_flags);
+    }
+
+    if (cs->arg_names) {
+        MVM_free(cs->arg_names);
+    }
+
+    if (cs->with_invocant) {
+        MVM_callsite_destroy(cs->with_invocant);
+    }
+
+    MVM_free(cs);
+}
+
 void MVM_callsite_initialize_common(MVMThreadContext *tc) {
     MVMCallsite *ptr;
 
