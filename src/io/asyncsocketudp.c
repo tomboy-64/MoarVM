@@ -37,7 +37,7 @@ static void on_read(uv_udp_t *handle, ssize_t nread, const uv_buf_t *buf, const 
     MVMAsyncTask     *t   = (MVMAsyncTask *)MVM_repr_at_pos_o(tc,
         tc->instance->event_loop_active, ri->work_idx);
     MVM_repr_push_o(tc, arr, t->body.schedulee);
-    if (nread > 0) {
+    if (nread >= 0) {
         MVMROOT(tc, t, {
         MVMROOT(tc, arr, {
             /* Push the sequence number. */
@@ -185,7 +185,7 @@ static MVMAsyncTask * read_chars(MVMThreadContext *tc, MVMOSHandle *h, MVMObject
     MVM_ASSIGN_REF(tc, &(task->common.header), task->body.schedulee, schedulee);
     task->body.ops  = &read_op_table;
     ri              = MVM_calloc(1, sizeof(ReadInfo));
-    ri->ds          = MVM_string_decodestream_create(tc, MVM_encoding_type_utf8, 0);
+    ri->ds          = MVM_string_decodestream_create(tc, MVM_encoding_type_utf8, 0, 0);
     MVM_ASSIGN_REF(tc, &(task->common.header), ri->handle, h);
     task->body.data = ri;
 
@@ -304,7 +304,7 @@ static void write_setup(MVMThreadContext *tc, uv_loop_t *loop, MVMObject *async_
     /* Encode the string, or extract buf data. */
     if (wi->str_data) {
         MVMuint64 output_size_64;
-        output = MVM_string_utf8_encode(tc, wi->str_data, &output_size_64);
+        output = MVM_string_utf8_encode(tc, wi->str_data, &output_size_64, 0);
         output_size = (int)output_size_64;
     }
     else {

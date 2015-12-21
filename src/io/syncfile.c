@@ -93,7 +93,7 @@ static void seek(MVMThreadContext *tc, MVMOSHandle *h, MVMint64 offset, MVMint64
         MVM_exception_throw_adhoc(tc, "Failed to seek in filehandle: %d", errno);
     if ((r = MVM_platform_lseek(data->fd, 0, SEEK_CUR)) == -1)
         MVM_exception_throw_adhoc(tc, "Failed to seek in filehandle: %d", errno);
-    data->ds = MVM_string_decodestream_create(tc, data->encoding, r);
+    data->ds = MVM_string_decodestream_create(tc, data->encoding, r, 1);
 }
 
 /* Get curernt position in the file. */
@@ -126,7 +126,7 @@ static MVMint32 read_to_buffer(MVMThreadContext *tc, MVMIOFileData *data, MVMint
 /* Ensures we have a decode stream, creating it if we're missing one. */
 static void ensure_decode_stream(MVMThreadContext *tc, MVMIOFileData *data) {
     if (!data->ds)
-        data->ds = MVM_string_decodestream_create(tc, data->encoding, 0);
+        data->ds = MVM_string_decodestream_create(tc, data->encoding, 0, 1);
 }
 
 /* Reads a single line from the file handle. May serve it from a buffer, if we
@@ -228,7 +228,8 @@ static MVMint64 write_str(MVMThreadContext *tc, MVMOSHandle *h, MVMString *str, 
     MVMIOFileData *data = (MVMIOFileData *)h->body.data;
     MVMuint64 output_size;
     MVMint64 bytes_written;
-    char *output = MVM_string_encode(tc, str, 0, -1, &output_size, data->encoding, NULL);
+    char *output = MVM_string_encode(tc, str, 0, -1, &output_size, data->encoding, NULL,
+        MVM_TRANSLATE_NEWLINE_OUTPUT);
     uv_buf_t write_buf  = uv_buf_init(output, output_size);
     uv_fs_t req;
 
@@ -296,7 +297,7 @@ static MVMint64 lock(MVMThreadContext *tc, MVMOSHandle *h, MVMint64 flag) {
     OVERLAPPED offset;
 
     if (hf == INVALID_HANDLE_VALUE) {
-        MVM_exception_throw_adhoc(tc, "Failed to seek in filehandle: bad file descriptor");
+        MVM_exception_throw_adhoc(tc, "Failed to lock filehandle: bad file descriptor");
     }
 
     flag = ((flag & MVM_FILE_FLOCK_NONBLOCK) ? LOCKFILE_FAIL_IMMEDIATELY : 0)
