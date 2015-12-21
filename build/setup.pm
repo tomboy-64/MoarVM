@@ -26,6 +26,12 @@ our %TP_TOM = (
     src  => [ '3rdparty/libtommath' ],
 );
 
+our %TP_TOMMY = (
+    name => 'tommy',
+    path => '3rdparty/tommy',
+    src  => [ '3rdparty/tommy' ],
+);
+
 our %TP_MT = (
     name => 'tinymt',
     path => '3rdparty/tinymt',
@@ -69,6 +75,7 @@ our %TP_UV = (
 our %THIRDPARTY = (
     lao => { %TP_LAO },
     tom => { %TP_TOM },
+    tmy => { %TP_TOMMY },
     sha => { %TP_SHA },
     mt  => { %TP_MT },
     dc  => { %TP_DC },

@@ -347,7 +347,8 @@ HEADERS = src/moar.h \
           src/jit/log.h \
           src/instrument/crossthreadwrite.h \
           src/gen/config.h \
-          3rdparty/uthash.h
+          3rdparty/uthash.h \
+          3rdparty/tommy/tommy.h
 
 UV_UNIX = 3rdparty/libuv/src/fs-poll@obj@ \
           3rdparty/libuv/src/inet@obj@ \
@@ -457,10 +458,12 @@ install: all
 	$(MKPATH) $(DESTDIR)$(PREFIX)/include/msinttypes
 	$(MKPATH) $(DESTDIR)$(PREFIX)/include/sha1
 	$(MKPATH) $(DESTDIR)$(PREFIX)/include/tinymt
+	$(MKPATH) $(DESTDIR)$(PREFIX)/include/tommy
 	$(CP) 3rdparty/libuv/include/*.h $(DESTDIR)$(PREFIX)/include/libuv
 	$(CP) 3rdparty/msinttypes/*.h $(DESTDIR)$(PREFIX)/include/msinttypes
 	$(CP) 3rdparty/sha1/*.h $(DESTDIR)$(PREFIX)/include/sha1
 	$(CP) 3rdparty/tinymt/*.h $(DESTDIR)$(PREFIX)/include/tinymt
+	$(CP) 3rdparty/tommy/*.h $(DESTDIR)$(PREFIX)/include/tommy
 @install@
 
 lib: @moar@
