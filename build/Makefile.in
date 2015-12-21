@@ -40,6 +40,7 @@ CFLAGS    = @cflags@ @ccdef@MVM_TRACING=$(TRACING) @ccdef@MVM_CGOTO=$(CGOTO)
 CINCLUDES = @cincludes@ \
             @ccinc@@shaincludedir@ \
             @ccinc@3rdparty/tinymt \
+            @ccinc@3rdparty/tommy \
             @ccinc@3rdparty \
             @ccinc@src
 LDFLAGS   = @ldflags@
@@ -556,6 +557,10 @@ dasm_all: src/jit/emit_win32_x64.c src/jit/emit_posix_x64.c
 @tomlib@: $(TOM_OBJECTS)
 	$(MSG) linking $@
 	$(CMD)@tomrule@ $(NOOUT)
+
+@tmylib@: @tmyobjects@
+	$(MSG) linking $@
+	$(CMD)@tmyrule@ $(NOOUT)
 
 @shalib@: @shaobjects@
 	$(MSG) linking $@
