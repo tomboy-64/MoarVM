@@ -25,14 +25,14 @@ static void extract_key(MVMThreadContext *tc, void **kdata, size_t *klen, MVMObj
 static void copy_to(MVMThreadContext *tc, MVMSTable *st, void *src, MVMObject *dest_root, void *dest) {
     MVMHashAttrStoreBody *src_body  = (MVMHashAttrStoreBody *)src;
     MVMHashAttrStoreBody *dest_body = (MVMHashAttrStoreBody *)dest;
-    MVMHashEntry *current, *tmp;
+    MVMHashAttrEntry *current, *tmp;
     unsigned bucket_tmp;
 
     /* NOTE: if we really wanted to, we could avoid rehashing... */
     HASH_ITER(hash_handle, src_body->hash_head, current, tmp, bucket_tmp) {
         size_t klen;
         void *kdata;
-        MVMHashEntry *new_entry = MVM_malloc(sizeof(MVMHashEntry));
+        MVMHashAttrEntry *new_entry = MVM_malloc(sizeof(MVMHashAttrEntry));
         MVM_ASSIGN_REF(tc, &(dest_root->header), new_entry->key, current->key);
         MVM_ASSIGN_REF(tc, &(dest_root->header), new_entry->value, current->value);
         extract_key(tc, &kdata, &klen, new_entry->key);
@@ -44,7 +44,7 @@ static void copy_to(MVMThreadContext *tc, MVMSTable *st, void *src, MVMObject *d
 /* Adds held objects to the GC worklist. */
 static void gc_mark(MVMThreadContext *tc, MVMSTable *st, void *data, MVMGCWorklist *worklist) {
     MVMHashAttrStoreBody *body = (MVMHashAttrStoreBody *)data;
-    MVMHashEntry *current, *tmp;
+    MVMHashAttrEntry *current, *tmp;
     unsigned bucket_tmp;
 
     HASH_ITER(hash_handle, body->hash_head, current, tmp, bucket_tmp) {
@@ -56,7 +56,7 @@ static void gc_mark(MVMThreadContext *tc, MVMSTable *st, void *data, MVMGCWorkli
 /* Called by the VM in order to free memory associated with this object. */
 static void gc_free(MVMThreadContext *tc, MVMObject *obj) {
     MVMHashAttrStore *h = (MVMHashAttrStore *)obj;
-    MVM_HASH_DESTROY(hash_handle, MVMHashEntry, h->body.hash_head);
+    MVM_HASH_DESTROY(hash_handle, MVMHashAttrEntry, h->body.hash_head);
 }
 
 static void get_attribute(MVMThreadContext *tc, MVMSTable *st, MVMObject *root,
@@ -64,7 +64,7 @@ static void get_attribute(MVMThreadContext *tc, MVMSTable *st, MVMObject *root,
         MVMRegister *result_reg, MVMuint16 kind) {
     MVMHashAttrStoreBody *body = (MVMHashAttrStoreBody *)data;
     void *kdata;
-    MVMHashEntry *entry;
+    MVMHashAttrEntry *entry;
     size_t klen;
     if (kind == MVM_reg_obj) {
         extract_key(tc, &kdata, &klen, (MVMObject *)name);
@@ -82,7 +82,7 @@ static void bind_attribute(MVMThreadContext *tc, MVMSTable *st, MVMObject *root,
         MVMRegister value_reg, MVMuint16 kind) {
     MVMHashAttrStoreBody *body = (MVMHashAttrStoreBody *)data;
     void *kdata;
-    MVMHashEntry *entry;
+    MVMHashAttrEntry *entry;
     size_t klen;
     if (kind == MVM_reg_obj) {
         extract_key(tc, &kdata, &klen, (MVMObject *)name);
@@ -90,7 +90,7 @@ static void bind_attribute(MVMThreadContext *tc, MVMSTable *st, MVMObject *root,
         /* first check whether we must update the old entry. */
         HASH_FIND(hash_handle, body->hash_head, kdata, klen, entry);
         if (!entry) {
-            entry = MVM_malloc(sizeof(MVMHashEntry));
+            entry = MVM_malloc(sizeof(MVMHashAttrEntry));
             HASH_ADD_KEYPTR(hash_handle, body->hash_head, kdata, klen, entry);
         }
         else
@@ -107,7 +107,7 @@ static void bind_attribute(MVMThreadContext *tc, MVMSTable *st, MVMObject *root,
 static MVMint64 is_attribute_initialized(MVMThreadContext *tc, MVMSTable *st, void *data, MVMObject *class_handle, MVMString *name, MVMint64 hint) {
     MVMHashAttrStoreBody *body = (MVMHashAttrStoreBody *)data;
     void *kdata;
-    MVMHashEntry *entry;
+    MVMHashAttrEntry *entry;
     size_t klen;
 
     extract_key(tc, &kdata, &klen, (MVMObject *)name);

@@ -17,6 +17,13 @@ static MVMObject * type_object_for(MVMThreadContext *tc, MVMObject *HOW) {
     return st->WHAT;
 }
 
+/* Initializes a new instance. */
+static void initialize(MVMThreadContext *tc, MVMSTable *st, MVMObject *root, void *data) {
+    MVMHashBody *body = (MVMHashBody *)data;
+
+    tommy_hashlin_init(&body->hash_head);
+}
+
 MVM_STATIC_INLINE void extract_key(MVMThreadContext *tc, void **kdata, size_t *klen, MVMObject *key) {
     MVM_HASH_EXTRACT_KEY(tc, kdata, klen, key, "MVMHash representation requires MVMString keys")
 }
@@ -25,48 +32,71 @@ MVM_STATIC_INLINE void extract_key(MVMThreadContext *tc, void **kdata, size_t *k
 static void copy_to(MVMThreadContext *tc, MVMSTable *st, void *src, MVMObject *dest_root, void *dest) {
     MVMHashBody *src_body  = (MVMHashBody *)src;
     MVMHashBody *dest_body = (MVMHashBody *)dest;
-    MVMHashEntry *current, *tmp;
-    unsigned bucket_tmp;
+    tommy_count_t bucket_max;
+    tommy_count_t pos;
 
-    /* NOTE: if we really wanted to, we could avoid rehashing... */
-    HASH_ITER(hash_handle, src_body->hash_head, current, tmp, bucket_tmp) {
-        size_t klen;
-        void *kdata;
-        MVMHashEntry *new_entry = MVM_fixed_size_alloc(tc, tc->instance->fsa,
-            sizeof(MVMHashEntry));
-        MVM_ASSIGN_REF(tc, &(dest_root->header), new_entry->key, current->key);
-        MVM_ASSIGN_REF(tc, &(dest_root->header), new_entry->value, current->value);
-        extract_key(tc, &kdata, &klen, new_entry->key);
+    /* number of valid buckets */
+    bucket_max = src_body->hash_head.low_max + src_body->hash_head.split;
 
-        HASH_ADD_KEYPTR(hash_handle, dest_body->hash_head, kdata, klen, new_entry);
+    for (pos = 0; pos < bucket_max; ++pos) {
+        tommy_hashlin_node* node = *tommy_hashlin_pos(&src_body->hash_head, pos);
+
+        while (node) {
+            MVMHashEntry *current = (MVMHashEntry *)node->data;
+            MVMHashEntry *new_entry = MVM_fixed_size_alloc(tc, tc->instance->fsa,
+                sizeof(MVMHashEntry));
+
+            /* cached hashval is in node->key */
+            MVM_HASH_ADD(dest_body, new_entry, node->key);
+            node = node->next;
+
+            MVM_ASSIGN_REF(tc, &(dest_root->header), new_entry->key, current->key);
+            MVM_ASSIGN_REF(tc, &(dest_root->header), new_entry->value, current->value);
+        }
     }
 }
 
 /* Adds held objects to the GC worklist. */
 static void gc_mark(MVMThreadContext *tc, MVMSTable *st, void *data, MVMGCWorklist *worklist) {
     MVMHashBody *body = (MVMHashBody *)data;
-    MVMHashEntry *current, *tmp;
-    unsigned bucket_tmp;
+    tommy_count_t bucket_max;
+    tommy_count_t pos;
 
-    HASH_ITER(hash_handle, body->hash_head, current, tmp, bucket_tmp) {
-        MVM_gc_worklist_add(tc, worklist, &current->key);
-        MVM_gc_worklist_add(tc, worklist, &current->value);
+    /* number of valid buckets */
+    bucket_max = body->hash_head.low_max + body->hash_head.split;
+
+    for (pos = 0; pos < bucket_max; ++pos) {
+        tommy_hashlin_node* node = *tommy_hashlin_pos(&body->hash_head, pos);
+
+        while (node) {
+            MVMHashEntry *current = (MVMHashEntry *)node->data;
+            node = node->next;
+            MVM_gc_worklist_add(tc, worklist, current->key);
+            MVM_gc_worklist_add(tc, worklist, current->value);
+        }
     }
 }
 
 /* Called by the VM in order to free memory associated with this object. */
 static void gc_free(MVMThreadContext *tc, MVMObject *obj) {
-    MVMHash *h = (MVMHash *)obj;
-    MVMHashEntry *current, *tmp;
-    unsigned bucket_tmp;
-    HASH_ITER(hash_handle, h->body.hash_head, current, tmp, bucket_tmp) {
-        if (current != h->body.hash_head)
+    MVMHashBody *body = &((MVMHash *)obj)->body;
+    tommy_count_t bucket_max;
+    tommy_count_t pos;
+
+    /* number of valid buckets */
+    bucket_max = body->hash_head.low_max + body->hash_head.split;
+
+    for (pos = 0; pos < bucket_max; ++pos) {
+        tommy_hashlin_node* node = *tommy_hashlin_pos(&body->hash_head, pos);
+
+        while (node) {
+            MVMHashEntry *current = (MVMHashEntry *)node->data;
+            node = node->next;
             MVM_fixed_size_free(tc, tc->instance->fsa, sizeof(MVMHashEntry), current);
+        }
     }
-    tmp = h->body.hash_head;
-    HASH_CLEAR(hash_handle, h->body.hash_head);
-    if (tmp)
-        MVM_fixed_size_free(tc, tc->instance->fsa, sizeof(MVMHashEntry), tmp);
+
+    tommy_hashlin_done(&body->hash_head);
 }
 
 static void at_key(MVMThreadContext *tc, MVMSTable *st, MVMObject *root, void *data, MVMObject *key, MVMRegister *result, MVMuint16 kind) {
@@ -74,8 +104,9 @@ static void at_key(MVMThreadContext *tc, MVMSTable *st, MVMObject *root, void *d
     void *kdata;
     MVMHashEntry *entry;
     size_t klen;
+
     extract_key(tc, &kdata, &klen, key);
-    HASH_FIND(hash_handle, body->hash_head, kdata, klen, entry);
+    MVM_HASH_FIND(tc, body, key, MVM_HASHVAL(kdata, klen), entry);
     if (kind == MVM_reg_obj)
         result->o = entry != NULL ? entry->value : tc->instance->VMNull;
     else
@@ -88,18 +119,17 @@ static void bind_key(MVMThreadContext *tc, MVMSTable *st, MVMObject *root, void 
     void *kdata;
     MVMHashEntry *entry;
     size_t klen;
+    MVM_hash_t hashval;
 
     extract_key(tc, &kdata, &klen, key);
+    hashval = MVM_HASHVAL(kdata, klen);
 
     /* first check whether we can must update the old entry. */
-    HASH_FIND(hash_handle, body->hash_head, kdata, klen, entry);
+    MVM_HASH_FIND(tc, body, key, hashval, entry);
     if (!entry) {
-        entry = MVM_fixed_size_alloc(tc, tc->instance->fsa,
-            sizeof(MVMHashEntry));
-        HASH_ADD_KEYPTR(hash_handle, body->hash_head, kdata, klen, entry);
+        entry = MVM_fixed_size_alloc(tc, tc->instance->fsa, sizeof(MVMHashEntry));
+        MVM_HASH_ADD(body, entry, hashval);
     }
-    else
-        entry->hash_handle.key = (void *)kdata;
     MVM_ASSIGN_REF(tc, &(root->header), entry->key, key);
     if (kind == MVM_reg_obj) {
         MVM_ASSIGN_REF(tc, &(root->header), entry->value, value.o);
@@ -112,7 +142,7 @@ static void bind_key(MVMThreadContext *tc, MVMSTable *st, MVMObject *root, void 
 
 static MVMuint64 elems(MVMThreadContext *tc, MVMSTable *st, MVMObject *root, void *data) {
     MVMHashBody *body = (MVMHashBody *)data;
-    return HASH_CNT(hash_handle, body->hash_head);
+    return tommy_hashlin_count(&body->hash_head);
 }
 
 static MVMint64 exists_key(MVMThreadContext *tc, MVMSTable *st, MVMObject *root, void *data, MVMObject *key) {
@@ -120,9 +150,12 @@ static MVMint64 exists_key(MVMThreadContext *tc, MVMSTable *st, MVMObject *root,
     void *kdata;
     MVMHashEntry *entry;
     size_t klen;
-    extract_key(tc, &kdata, &klen, key);
+    MVM_hash_t hashval;
 
-    HASH_FIND(hash_handle, body->hash_head, kdata, klen, entry);
+    extract_key(tc, &kdata, &klen, key);
+    hashval = MVM_HASHVAL(kdata, klen);
+
+    MVM_HASH_FIND(tc, body, key, hashval, entry);
     return entry != NULL;
 }
 
@@ -131,13 +164,15 @@ static void delete_key(MVMThreadContext *tc, MVMSTable *st, MVMObject *root, voi
     MVMHashEntry *old_entry;
     size_t klen;
     void *kdata;
-    extract_key(tc, &kdata, &klen, key);
+    MVM_hash_t hashval;
 
-    HASH_FIND(hash_handle, body->hash_head, kdata, klen, old_entry);
+    extract_key(tc, &kdata, &klen, key);
+    hashval = MVM_HASHVAL(kdata, klen);
+
+    MVM_HASH_FIND(tc, body, key, hashval, old_entry);
     if (old_entry) {
-        HASH_DELETE(hash_handle, body->hash_head, old_entry);
-        MVM_fixed_size_free(tc, tc->instance->fsa,
-            sizeof(MVMHashEntry), old_entry);
+        tommy_hashlin_remove_existing(&body->hash_head, &old_entry->hash_node);
+        MVM_fixed_size_free(tc, tc->instance->fsa, sizeof(MVMHashEntry), old_entry);
     }
 }
 
@@ -203,7 +238,7 @@ const MVMREPROps * MVMHash_initialize(MVMThreadContext *tc) {
 static const MVMREPROps this_repr = {
     type_object_for,
     MVM_gc_allocate_object,
-    NULL, /* initialize */
+    initialize,
     copy_to,
     MVM_REPR_DEFAULT_ATTR_FUNCS,
     MVM_REPR_DEFAULT_BOX_FUNCS,

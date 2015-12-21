@@ -1,20 +1,22 @@
 /* Representation used by VM-level hashes. */
 
+#include <../../3rdparty/tommy/tommy.h>
+
 struct MVMHashEntry {
+    /* the tommy node inline struct. */
+    tommy_node hash_node;
+
     /* key object (must be MVMString REPR) */
     MVMObject *key;
 
     /* value object */
     MVMObject *value;
-
-    /* the uthash hash handle inline struct. */
-    UT_hash_handle hash_handle;
 };
 
 struct MVMHashBody {
 
-    /* uthash updates this pointer directly. */
-    MVMHashEntry *hash_head;
+    /* linear chained hash */
+    tommy_hashlin hash_head;
 
 };
 struct MVMHash {
@@ -22,8 +24,31 @@ struct MVMHash {
     MVMHashBody body;
 };
 
+typedef tommy_hash_t MVM_hash_t;
+
 /* Function for REPR setup. */
 const MVMREPROps * MVMHash_initialize(MVMThreadContext *tc);
+
+#define MVM_HASHVAL(kdata, klen) tommy_hash_u32(0, (kdata), (klen))
+
+#define MVM_HASH_ADD(body, entry, hashval) \
+    tommy_hashlin_insert(&(body)->hash_head, &(entry)->hash_node, (entry), (hashval));
+
+#define MVM_HASH_FIND(tc, body, keya, hashval, entry) do { \
+    tommy_hashlin_node* node = tommy_hashlin_bucket(&(body)->hash_head, (hashval)); \
+ \
+    entry = NULL; \
+    while (node) { \
+        if (node->key == (hashval) && \
+        MVM_string_equal(tc, (MVMString *)(keya), (MVMString *)(((MVMHashEntry *)node->data)->key))) { \
+            entry = (MVMHashEntry *)node->data; \
+            break; \
+        } \
+        else { \
+            node = node->next; \
+        } \
+    } \
+} while (0)
 
 #define MVM_HASH_ACTION(tc, hash, name, entry, action, member, size) \
     action(hash_handle, hash, \

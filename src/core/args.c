@@ -784,22 +784,31 @@ static void flatten_args(MVMThreadContext *tc, MVMArgProcContext *ctx) {
 
             if (arg_info.arg.o && REPR(arg_info.arg.o)->ID == MVM_REPR_ID_MVMHash) {
                 MVMHashBody *body = &((MVMHash *)arg_info.arg.o)->body;
-                MVMHashEntry *current, *tmp;
-                unsigned bucket_tmp;
-
-                HASH_ITER(hash_handle, body->hash_head, current, tmp, bucket_tmp) {
-                    MVMString *arg_name = (MVMString *)current->key;
-                    if (!seen_name(tc, arg_name, new_args, new_num_pos, new_arg_pos)) {
-                        if (new_arg_pos + 1 >= new_args_size) {
-                            new_args = MVM_realloc(new_args, (new_args_size *= 2) * sizeof(MVMRegister));
+                tommy_count_t bucket_max;
+                tommy_count_t pos;
+            
+                /* number of valid buckets */
+                bucket_max = body->hash_head.low_max + body->hash_head.split;
+            
+                for (pos = 0; pos < bucket_max; ++pos) {
+                    tommy_hashlin_node* node = *tommy_hashlin_pos(&body->hash_head, pos);
+            
+                    while (node) {
+                        MVMHashEntry *current = (MVMHashEntry *)node->data;
+                        node = node->next;
+                        MVMString *arg_name = (MVMString *)current->key;
+                        if (!seen_name(tc, arg_name, new_args, new_num_pos, new_arg_pos)) {
+                            if (new_arg_pos + 1 >= new_args_size) {
+                                new_args = MVM_realloc(new_args, (new_args_size *= 2) * sizeof(MVMRegister));
+                            }
+                            if (new_flag_pos == new_arg_flags_size) {
+                                new_arg_flags = MVM_realloc(new_arg_flags, (new_arg_flags_size *= 2) * sizeof(MVMCallsiteEntry));
+                            }
+    
+                            (new_args + new_arg_pos++)->s = arg_name;
+                            (new_args + new_arg_pos++)->o = current->value;
+                            new_arg_flags[new_flag_pos++] = MVM_CALLSITE_ARG_NAMED | MVM_CALLSITE_ARG_OBJ;
                         }
-                        if (new_flag_pos == new_arg_flags_size) {
-                            new_arg_flags = MVM_realloc(new_arg_flags, (new_arg_flags_size *= 2) * sizeof(MVMCallsiteEntry));
-                        }
-
-                        (new_args + new_arg_pos++)->s = arg_name;
-                        (new_args + new_arg_pos++)->o = current->value;
-                        new_arg_flags[new_flag_pos++] = MVM_CALLSITE_ARG_NAMED | MVM_CALLSITE_ARG_OBJ;
                     }
                 }
             }

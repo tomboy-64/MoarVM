@@ -291,7 +291,7 @@ our %COMPILERS = (
         ccwarnflags  => '-Wno-logical-op-parentheses',
         ccoptiflags  => '-O%s -DNDEBUG',
         ccdebugflags => '-g%s',
-        ccinstflags  => '-fsanitize=address',
+        ccinstflags  => '-fprofile-instr-generate',
 
         ldmiscflags  => '',
         ldoptiflags  => undef,

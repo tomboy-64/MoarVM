@@ -105,13 +105,7 @@ static void shift(MVMThreadContext *tc, MVMSTable *st, MVMObject *root, void *da
             }
             return;
         case MVM_ITER_MODE_HASH:
-            body->hash_state.curr = body->hash_state.next;
-            if (!body->hash_state.curr)
-                MVM_exception_throw_adhoc(tc, "Iteration past end of iterator");
-            body->hash_state.next = HASH_ITER_NEXT_ITEM(
-                &(body->hash_state.next->hash_handle),
-                &(body->hash_state.bucket_state));
-            value->o = root;
+            MVM_exception_throw_adhoc(tc, "Surely we've never iterated a hash");
             return;
         default:
             MVM_exception_throw_adhoc(tc, "Unknown iteration mode");
@@ -209,17 +203,7 @@ MVMObject * MVM_iter(MVMThreadContext *tc, MVMObject *target) {
             }
         }
         else if (REPR(target)->ID == MVM_REPR_ID_MVMHash) {
-            iterator = (MVMIter *)MVM_repr_alloc_init(tc,
-                MVM_hll_current(tc)->hash_iterator_type);
-            iterator->body.mode = MVM_ITER_MODE_HASH;
-            iterator->body.hash_state.bucket_state = 0;
-            iterator->body.hash_state.curr         = NULL;
-            iterator->body.hash_state.next         = HASH_ITER_FIRST_ITEM(
-                ((MVMHash *)target)->body.hash_head
-                    ? ((MVMHash *)target)->body.hash_head->hash_handle.tbl
-                    : NULL,
-                &(iterator->body.hash_state.bucket_state));
-            MVM_ASSIGN_REF(tc, &(iterator->common.header), iterator->body.target, target);
+            MVM_exception_throw_adhoc(tc, "Surely we've never iterated a hash");
         }
         else if (REPR(target)->ID == MVM_REPR_ID_MVMContext) {
             /* Turn the context into a VMHash and then iterate that. */
@@ -312,7 +296,7 @@ MVMint64 MVM_iter_istrue(MVMThreadContext *tc, MVMIter *iter) {
             return iter->body.array_state.index + 1 < iter->body.array_state.limit ? 1 : 0;
             break;
         case MVM_ITER_MODE_HASH:
-            return iter->body.hash_state.next != NULL ? 1 : 0;
+            MVM_exception_throw_adhoc(tc, "Surely we've never iterated a hash");
             break;
         default:
             MVM_exception_throw_adhoc(tc, "Invalid iteration mode used");
