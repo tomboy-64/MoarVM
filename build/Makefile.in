@@ -406,6 +406,8 @@ UV_OBJECTS = @uvobjects@
 
 TOM_OBJECTS = @tomobjects@
 
+TMY_OBJECTS = @tmyobjects@
+
 THIRDPARTY = @thirdpartylibs@
 
 .SUFFIXES: .c @obj@ .i @asm@
