@@ -27,9 +27,9 @@ our %TP_TOM = (
 );
 
 our %TP_TOMMY = (
-    name => 'tommy',
-    path => '3rdparty/tommy',
-    src  => [ '3rdparty/tommy' ],
+    name    => 'tommy',
+    path    => '3rdparty/tommy',
+    objects => '3rdparty/tommy/tommy@obj@',
 );
 
 our %TP_MT = (
