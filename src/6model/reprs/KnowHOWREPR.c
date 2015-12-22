@@ -24,12 +24,12 @@ static void initialize(MVMThreadContext *tc, MVMSTable *st, MVMObject *root, voi
 
     MVM_gc_root_temp_push(tc, (MVMCollectable **)&root);
 
-    methods = REPR(BOOTHash)->allocate(tc, STABLE(BOOTHash));
+    methods = MVM_repr_alloc_init(tc, BOOTHash);
     MVM_gc_root_temp_push(tc, (MVMCollectable **)&methods);
     MVM_ASSIGN_REF(tc, &(root->header), ((MVMKnowHOWREPR *)root)->body.methods, methods);
 
     BOOTArray  = tc->instance->boot_types.BOOTArray;
-    attributes = REPR(BOOTArray)->allocate(tc, STABLE(BOOTArray));
+    attributes = MVM_repr_alloc_init(tc, BOOTArray);
     MVM_ASSIGN_REF(tc, &(root->header), ((MVMKnowHOWREPR *)root)->body.attributes, attributes);
 
     MVM_gc_root_temp_pop_n(tc, 2);
