@@ -104,9 +104,25 @@ static void shift(MVMThreadContext *tc, MVMSTable *st, MVMObject *root, void *da
                 MVM_exception_throw_adhoc(tc, "Wrong register kind in iteration");
             }
             return;
-        case MVM_ITER_MODE_HASH:
-            MVM_exception_throw_adhoc(tc, "Surely we've never iterated a hash");
+        case MVM_ITER_MODE_HASH: {
+            tommy_node *next_node;
+            body->hash_state.curr = body->hash_state.next;
+            body->hash_state.next = NULL;
+            if (!body->hash_state.curr)
+                MVM_exception_throw_adhoc(tc, "Iteration past end of iterator");
+            next_node = body->hash_state.curr->hash_node.next;
+            if (next_node)
+                body->hash_state.next = (MVMHashEntry *)next_node->data;
+            if (!body->hash_state.next) {
+                if (body->hash_state.bucket_pos < body->hash_state.bucket_max) {
+                    tommy_hashlin_node *node = *tommy_hashlin_pos(&((MVMHash *)target)->body.hash_head, ++body->hash_state.bucket_pos);
+                    if (node)
+                        body->hash_state.next = (MVMHashEntry *)node->data;
+                }
+            }
+            value->o = root;
             return;
+        }
         default:
             MVM_exception_throw_adhoc(tc, "Unknown iteration mode");
     }
@@ -203,7 +219,18 @@ MVMObject * MVM_iter(MVMThreadContext *tc, MVMObject *target) {
             }
         }
         else if (REPR(target)->ID == MVM_REPR_ID_MVMHash) {
-            MVM_exception_throw_adhoc(tc, "Surely we've never iterated a hash");
+            MVMHashBody *hash_body;
+            tommy_hashlin_node *node;
+            iterator = (MVMIter *)MVM_repr_alloc_init(tc,
+                MVM_hll_current(tc)->hash_iterator_type);
+            hash_body = &((MVMHash *)target)->body;
+            iterator->body.mode = MVM_ITER_MODE_HASH;
+            iterator->body.hash_state.bucket_max = hash_body->hash_head.low_max + hash_body->hash_head.split;
+            iterator->body.hash_state.bucket_pos = 0;
+            iterator->body.hash_state.curr       = NULL;
+            node = *tommy_hashlin_pos(&hash_body->hash_head, 0);
+            iterator->body.hash_state.next       = node ? (MVMHashEntry *)node->data : NULL;
+            MVM_ASSIGN_REF(tc, &(iterator->common.header), iterator->body.target, target);
         }
         else if (REPR(target)->ID == MVM_REPR_ID_MVMContext) {
             /* Turn the context into a VMHash and then iterate that. */
@@ -296,7 +323,7 @@ MVMint64 MVM_iter_istrue(MVMThreadContext *tc, MVMIter *iter) {
             return iter->body.array_state.index + 1 < iter->body.array_state.limit ? 1 : 0;
             break;
         case MVM_ITER_MODE_HASH:
-            MVM_exception_throw_adhoc(tc, "Surely we've never iterated a hash");
+            return iter->body.hash_state.next != NULL ? 1 : 0;
             break;
         default:
             MVM_exception_throw_adhoc(tc, "Invalid iteration mode used");

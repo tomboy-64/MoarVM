@@ -16,8 +16,10 @@ struct MVMIterBody {
     /* next hash item to give or next array index */
     union {
         struct {
+            /* XXX need to think about ConcurrentModification */
             MVMHashEntry *curr, *next;
-            unsigned      bucket_state;
+            tommy_count_t bucket_max;
+            tommy_count_t bucket_pos;
         } hash_state;
         struct {
             MVMint64 index;
