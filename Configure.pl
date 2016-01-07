@@ -34,7 +34,7 @@ GetOptions(\%args, qw(
     static has-libtommath has-libatomic_ops
     has-dyncall has-libffi
     build=s host=s big-endian jit! enable-jit lua=s has-dynasm
-    prefix=s bindir=s libdir=s mastdir=s make-install asan),
+    prefix=s bindir=s libdir=s mastdir=s make-install asan ubsan),
     'no-optimize|nooptimize' => sub { $args{optimize} = 0 },
     'no-debug|nodebug' => sub { $args{debug} = 0 }
 ) or die "See --help for further information\n";
@@ -62,7 +62,7 @@ for my $target (@target_dirs) {
 
 if (-d '.git') {
     print dots("Updating submodules");
-    my $msg = qx{git submodule --quiet update --init 2>&1};
+    my $msg = qx{git submodule sync --quiet && git submodule --quiet update --init 2>&1};
     if ($? >> 8 == 0) { print "OK\n" }
     else { softfail("git error: $msg") }
 }
@@ -80,6 +80,7 @@ $args{'has-libuv'}         //= 0;
 $args{'has-libatomic_ops'} //= 0;
 $args{'has-dynasm'}        //= 0;
 $args{'asan'}              //= 0;
+$args{'ubsan'}             //= 0;
 
 # jit is default
 $args{'jit'}               //= 1;
@@ -135,6 +136,7 @@ $config{crossconf} //= '';
 $config{dllimport} //= '';
 $config{dllexport} //= '';
 $config{dlllocal}  //= '';
+$config{translate_newline_output} //= 0;
 
 # assume the compiler can be used as linker frontend
 $config{ld}           //= $config{cc};
@@ -261,6 +263,10 @@ if ($args{'jit'}) {
 # fallback
 $config{jit} //= '$(JIT_STUB)';
 
+if ($config{'toolchain'} eq 'msvc') {
+    $config{install}   .= "\t\$(MKPATH) \$(DESTDIR)\$(PREFIX)/include/msinttypes\n"
+                        . "\t\$(CP) 3rdparty/msinttypes/*.h \$(DESTDIR)\$(PREFIX)/include/msinttypes\n";
+}
 
 
 
@@ -272,6 +278,7 @@ $config{ldlibs} = join ' ',
     (map { sprintf $config{ldusr}, $_; } @{$config{usrlibs}}),
     (map { sprintf $config{ldsys}, $_; } @{$config{syslibs}});
 $config{ldlibs} = ' -lasan ' . $config{ldlibs} if $args{asan};
+$config{ldlibs} = ' -lubsan ' . $config{ldlibs} if $args{ubsan};
 # macro defs
 $config{ccdefflags} = join ' ', map { $config{ccdef} . $_ } @{$config{defs}};
 
@@ -290,7 +297,9 @@ push @cflags, $config{ccinstflags}  if $args{instrument};
 push @cflags, $config{ccwarnflags};
 push @cflags, $config{ccdefflags};
 push @cflags, $config{ccshared}     unless $args{static};
-push @cflags, '-fno-omit-frame-pointer -fsanitize=address' if $args{asan};
+push @cflags, '-fno-omit-frame-pointer' if $args{asan} or $args{ubsan};
+push @cflags, '-fsanitize=address' if $args{asan};
+push @cflags, '-fsanitize=undefined' if $args{ubsan};
 push @cflags, $ENV{CFLAGS} if $ENV{CFLAGS};
 push @cflags, $ENV{CPPFLAGS} if $ENV{CPPFLAGS};
 $config{cflags} = join ' ', @cflags;
@@ -328,6 +337,8 @@ else {
     $config{libdir}    = '@prefix@/lib' if ! $args{libdir};
 }
 
+$config{mainlibs} = '-lubsan ' . $config{mainlibs} if $args{ubsan};
+
 # some toolchains generate garbage
 my @auxfiles = @{ $defaults{-auxfiles} };
 $config{auxclean} = @auxfiles ? '$(RM) ' . join ' ', @auxfiles : '@:';
@@ -347,6 +358,7 @@ else {
     build::probe::ptr_size_native(\%config, \%defaults);
 }
 
+build::probe::C_type_bool(\%config, \%defaults);
 build::probe::computed_goto(\%config, \%defaults);
 build::probe::pthread_yield(\%config, \%defaults);
 
@@ -715,7 +727,7 @@ __END__
                    [--static] [--prefix]
                    [--has-libtommath] [--has-sha] [--has-libuv]
                    [--has-libatomic_ops] [--has-dynasm]
-                   [--lua <lua>] [--asan] [--no-jit]
+                   [--lua <lua>] [--asan] [--ubsan] [--no-jit]
 
     ./Configure.pl --build <build-triple> --host <host-triple>
                    [--ar <ar>] [--cc <cc>] [--ld <ld>] [--make <make>]
@@ -798,6 +810,10 @@ memory leak checking (which can make Rakudo fail to build), you can set the foll
     export ASAN_OPTIONS=detect_leaks=0
 
 A full list of options is displayed if you set C<ASAN_OPTIONS> to C<help=1>.
+
+=item --ubsan
+
+Build with Undefined Behaviour sanitizer support.
 
 =item --ld <ld>
 

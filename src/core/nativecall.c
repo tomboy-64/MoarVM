@@ -80,7 +80,7 @@ MVMint16 MVM_nativecall_get_arg_type(MVMThreadContext *tc, MVMObject *info, MVMi
     else if (strcmp(ctypename, "cppstruct") == 0)
         result = MVM_NATIVECALL_ARG_CPPSTRUCT;
     else if (strcmp(ctypename, "cpointer") == 0)
-        result = MVM_NATIVECALL_ARG_CPOINTER;
+        result = MVM_NATIVECALL_ARG_CPOINTER | get_rw_flag(tc, info);
     else if (strcmp(ctypename, "carray") == 0)
         result = MVM_NATIVECALL_ARG_CARRAY;
     else if (strcmp(ctypename, "cunion") == 0)
@@ -271,7 +271,7 @@ char * MVM_nativecall_unmarshal_string(MVMThreadContext *tc, MVMObject *value, M
                 str = MVM_string_ascii_encode_any(tc, value_str);
                 break;
             case MVM_NATIVECALL_ARG_UTF16STR:
-                str = MVM_string_utf16_encode(tc, value_str);
+                str = MVM_string_utf16_encode(tc, value_str, 0);
                 break;
             default:
                 str = MVM_string_utf8_encode_C_string(tc, value_str);

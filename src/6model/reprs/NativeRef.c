@@ -64,6 +64,10 @@ static void gc_mark(MVMThreadContext *tc, MVMSTable *st, void *data, MVMGCWorkli
         case MVM_NATIVEREF_POSITIONAL:
             MVM_gc_worklist_add(tc, worklist, &ref->u.positional.obj);
             break;
+        case MVM_NATIVEREF_MULTIDIM:
+            MVM_gc_worklist_add(tc, worklist, &ref->u.multidim.obj);
+            MVM_gc_worklist_add(tc, worklist, &ref->u.multidim.indices);
+            break;
     }
 }
 
@@ -115,6 +119,9 @@ static void compose(MVMThreadContext *tc, MVMSTable *st, MVMObject *info_hash) {
                 else if (MVM_string_equal(tc, refkind_s, str_consts->positional)) {
                     kind = MVM_NATIVEREF_POSITIONAL;
                 }
+                else if (MVM_string_equal(tc, refkind_s, str_consts->multidim)) {
+                    kind = MVM_NATIVEREF_MULTIDIM;
+                }
                 else {
                     MVM_exception_throw_adhoc(tc, "NativeRef: invalid refkind in compose");
                 }
@@ -142,6 +149,44 @@ const MVMREPROps * MVMNativeRef_initialize(MVMThreadContext *tc) {
     return &this_repr;
 }
 
+static void spesh(MVMThreadContext *tc, MVMSTable *st, MVMSpeshGraph *g, MVMSpeshBB *bb, MVMSpeshIns *ins) {
+    MVMNativeRefREPRData * repr_data = (MVMNativeRefREPRData *)st->REPR_data;
+    MVMuint16              opcode    = ins->info->opcode;
+
+    if (!repr_data)
+        return;
+
+    if (repr_data->ref_kind != MVM_NATIVEREF_REG_OR_LEX)
+        return; /* TODO implement spesh for attribute and positional references */
+
+    switch (opcode) {
+        case MVM_OP_assign_i: {
+            MVMSpeshOperand target   = ins->operands[0];
+            MVMSpeshOperand value    = ins->operands[1];
+            if (repr_data->primitive_type != MVM_STORAGE_SPEC_BP_INT)
+                return; /* Shouldn't happen. so maybe throw an error? */
+            ins->info = MVM_op_get_op(MVM_OP_sp_deref_bind_i64);
+            ins->operands            = MVM_spesh_alloc(tc, g, 3 * sizeof(MVMSpeshOperand));
+            ins->operands[0]         = target;
+            ins->operands[1]         = value;
+            ins->operands[2].lit_i64 = offsetof(MVMNativeRef, body.u.reg_or_lex.var);
+            break;
+        }
+        case MVM_OP_decont_i: {
+            MVMSpeshOperand target   = ins->operands[0];
+            MVMSpeshOperand source   = ins->operands[1];
+            if (repr_data->primitive_type != MVM_STORAGE_SPEC_BP_INT)
+                return; /* Shouldn't happen. so maybe throw an error? */
+            ins->info = MVM_op_get_op(MVM_OP_sp_deref_get_i64);
+            ins->operands            = MVM_spesh_alloc(tc, g, 3 * sizeof(MVMSpeshOperand));
+            ins->operands[0]         = target;
+            ins->operands[1]         = source;
+            ins->operands[2].lit_i64 = offsetof(MVMNativeRef, body.u.reg_or_lex.var);
+            break;
+        }
+    }
+}
+
 static const MVMREPROps this_repr = {
     type_object_for,
     MVM_gc_allocate_object,
@@ -165,7 +210,7 @@ static const MVMREPROps this_repr = {
     NULL, /* gc_mark_repr_data */
     gc_free_repr_data,
     compose,
-    NULL, /* spesh */
+    spesh, /* spesh */
     "NativeRef", /* name */
     MVM_REPR_ID_NativeRef,
     1, /* refs_frames */
@@ -235,7 +280,9 @@ MVMObject * MVM_nativeref_lex_i(MVMThreadContext *tc, MVMuint16 outers, MVMuint1
             : f->static_info->body.lexical_types;
         MVMuint16 type = lexical_types[idx];
         if (type != MVM_reg_int64 && type != MVM_reg_int32 &&
-                type != MVM_reg_int16 && type != MVM_reg_int8)
+                type != MVM_reg_int16 && type != MVM_reg_int8 &&
+                type != MVM_reg_uint64 && type != MVM_reg_uint32 &&
+                type != MVM_reg_uint16 && type != MVM_reg_uint8)
             MVM_exception_throw_adhoc(tc, "getlexref_i: lexical is not an int");
         return reg_or_lex_ref(tc, ref_type, f, &(f->env[idx]), type);
     }
@@ -380,6 +427,37 @@ MVMObject * MVM_nativeref_pos_s(MVMThreadContext *tc, MVMObject *obj, MVMint64 i
     MVM_exception_throw_adhoc(tc, "No str positional reference type registered for current HLL");
 }
 
+/* Creation of native references for multi-dimensional positionals. */
+static MVMObject * md_posref(MVMThreadContext *tc, MVMObject *type, MVMObject *obj, MVMObject *indices) {
+    MVMNativeRef *ref;
+    MVMROOT(tc, obj, {
+    MVMROOT(tc, indices, {
+        ref = (MVMNativeRef *)MVM_gc_allocate_object(tc, STABLE(type));
+        MVM_ASSIGN_REF(tc, &(ref->common.header), ref->body.u.multidim.obj, obj);
+        MVM_ASSIGN_REF(tc, &(ref->common.header), ref->body.u.multidim.indices, indices);
+    });
+    });
+    return (MVMObject *)ref;
+}
+MVMObject * MVM_nativeref_multidim_i(MVMThreadContext *tc, MVMObject *obj, MVMObject *indices) {
+    MVMObject *ref_type = MVM_hll_current(tc)->int_multidim_ref;
+    if (ref_type)
+        return md_posref(tc, ref_type, obj, indices);
+    MVM_exception_throw_adhoc(tc, "No int positional reference type registered for current HLL");
+}
+MVMObject * MVM_nativeref_multidim_n(MVMThreadContext *tc, MVMObject *obj, MVMObject *indices) {
+    MVMObject *ref_type = MVM_hll_current(tc)->num_multidim_ref;
+    if (ref_type)
+        return md_posref(tc, ref_type, obj, indices);
+    MVM_exception_throw_adhoc(tc, "No num positional reference type registered for current HLL");
+}
+MVMObject * MVM_nativeref_multidim_s(MVMThreadContext *tc, MVMObject *obj, MVMObject *indices) {
+    MVMObject *ref_type = MVM_hll_current(tc)->str_multidim_ref;
+    if (ref_type)
+        return md_posref(tc, ref_type, obj, indices);
+    MVM_exception_throw_adhoc(tc, "No str positional reference type registered for current HLL");
+}
+
 /* Reference read functions. These do no checks that the reference is of the
  * right kind and primitive type, they just go ahead and do the read. Thus
  * they are more suited to calling from optimized code. The checking path is
@@ -437,6 +515,18 @@ MVMnum64 MVM_nativeref_read_positional_n(MVMThreadContext *tc, MVMObject *ref_ob
 MVMString * MVM_nativeref_read_positional_s(MVMThreadContext *tc, MVMObject *ref_obj) {
     MVMNativeRef *ref = (MVMNativeRef *)ref_obj;
     return MVM_repr_at_pos_s(tc, ref->body.u.positional.obj, ref->body.u.positional.idx);
+}
+MVMint64 MVM_nativeref_read_multidim_i(MVMThreadContext *tc, MVMObject *ref_obj) {
+    MVMNativeRef *ref = (MVMNativeRef *)ref_obj;
+    return MVM_repr_at_pos_multidim_i(tc, ref->body.u.multidim.obj, ref->body.u.multidim.indices);
+}
+MVMnum64 MVM_nativeref_read_multidim_n(MVMThreadContext *tc, MVMObject *ref_obj) {
+    MVMNativeRef *ref = (MVMNativeRef *)ref_obj;
+    return MVM_repr_at_pos_multidim_n(tc, ref->body.u.multidim.obj, ref->body.u.multidim.indices);
+}
+MVMString * MVM_nativeref_read_multidim_s(MVMThreadContext *tc, MVMObject *ref_obj) {
+    MVMNativeRef *ref = (MVMNativeRef *)ref_obj;
+    return MVM_repr_at_pos_multidim_s(tc, ref->body.u.multidim.obj, ref->body.u.multidim.indices);
 }
 
 /* Reference write functions. Same (non-checking) rules as the reads above. */
@@ -504,4 +594,17 @@ void MVM_nativeref_write_positional_n(MVMThreadContext *tc, MVMObject *ref_obj, 
 void MVM_nativeref_write_positional_s(MVMThreadContext *tc, MVMObject *ref_obj, MVMString *value) {
     MVMNativeRef *ref = (MVMNativeRef *)ref_obj;
     MVM_repr_bind_pos_s(tc, ref->body.u.positional.obj, ref->body.u.positional.idx, value);
+}
+
+void MVM_nativeref_write_multidim_i(MVMThreadContext *tc, MVMObject *ref_obj, MVMint64 value) {
+    MVMNativeRef *ref = (MVMNativeRef *)ref_obj;
+    MVM_repr_bind_pos_multidim_i(tc, ref->body.u.multidim.obj, ref->body.u.multidim.indices, value);
+}
+void MVM_nativeref_write_multidim_n(MVMThreadContext *tc, MVMObject *ref_obj, MVMnum64 value) {
+    MVMNativeRef *ref = (MVMNativeRef *)ref_obj;
+    MVM_repr_bind_pos_multidim_n(tc, ref->body.u.multidim.obj, ref->body.u.multidim.indices, value);
+}
+void MVM_nativeref_write_multidim_s(MVMThreadContext *tc, MVMObject *ref_obj, MVMString *value) {
+    MVMNativeRef *ref = (MVMNativeRef *)ref_obj;
+    MVM_repr_bind_pos_multidim_s(tc, ref->body.u.multidim.obj, ref->body.u.multidim.indices, value);
 }

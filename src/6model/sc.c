@@ -40,7 +40,9 @@ MVMObject * MVM_sc_create(MVMThreadContext *tc, MVMString *handle) {
                 scb->sc = sc;
                 sc->body = scb;
                 MVM_ASSIGN_REF(tc, &(sc->common.header), scb->handle, handle);
+                MVM_gc_allocate_gen2_default_set(tc);
                 MVM_repr_init(tc, (MVMObject *)sc);
+                MVM_gc_allocate_gen2_default_clear(tc);
             }
             uv_mutex_unlock(&tc->instance->mutex_sc_weakhash);
         });
@@ -100,6 +102,14 @@ MVMint64 MVM_sc_find_object_idx(MVMThreadContext *tc, MVMSerializationContext *s
             return i;
     MVM_exception_throw_adhoc(tc,
         "Object does not exist in serialization context");
+}
+
+/* Calls MVM_sc_find_object_idx, but first checks if the sc is actually an SCRef. */
+MVMint64 MVM_sc_find_object_idx_jit(MVMThreadContext *tc, MVMObject *sc, MVMObject *obj) {
+    if (REPR(sc)->ID != MVM_REPR_ID_SCRef)
+        MVM_exception_throw_adhoc(tc,
+            "Must provide an SCRef operand to scgetobjidx");
+    return MVM_sc_find_object_idx(tc, (MVMSerializationContext *)sc, obj);
 }
 
 /* Given an SC, looks up the index of an STable that is in its root set. */

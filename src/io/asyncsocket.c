@@ -71,9 +71,9 @@ static void on_read(uv_stream_t *handle, ssize_t nread, const uv_buf_t *buf) {
     else if (nread == UV_EOF) {
         MVMROOT(tc, t, {
         MVMROOT(tc, arr, {
-            MVMObject *minus_one = MVM_repr_box_int(tc,
-                tc->instance->boot_types.BOOTInt, -1);
-            MVM_repr_push_o(tc, arr, minus_one);
+            MVMObject *final = MVM_repr_box_int(tc,
+                tc->instance->boot_types.BOOTInt, ri->seq_number);
+            MVM_repr_push_o(tc, arr, final);
             MVM_repr_push_o(tc, arr, tc->instance->boot_types.BOOTStr);
             MVM_repr_push_o(tc, arr, tc->instance->boot_types.BOOTStr);
         });
@@ -185,7 +185,7 @@ static MVMAsyncTask * read_chars(MVMThreadContext *tc, MVMOSHandle *h, MVMObject
     MVM_ASSIGN_REF(tc, &(task->common.header), task->body.schedulee, schedulee);
     task->body.ops  = &read_op_table;
     ri              = MVM_calloc(1, sizeof(ReadInfo));
-    ri->ds          = MVM_string_decodestream_create(tc, MVM_encoding_type_utf8, 0);
+    ri->ds          = MVM_string_decodestream_create(tc, MVM_encoding_type_utf8, 0, 0);
     MVM_ASSIGN_REF(tc, &(task->common.header), ri->handle, h);
     task->body.data = ri;
 
@@ -303,7 +303,7 @@ static void write_setup(MVMThreadContext *tc, uv_loop_t *loop, MVMObject *async_
     /* Encode the string, or extract buf data. */
     if (wi->str_data) {
         MVMuint64 output_size_64;
-        output = MVM_string_utf8_encode(tc, wi->str_data, &output_size_64);
+        output = MVM_string_utf8_encode(tc, wi->str_data, &output_size_64, 0);
         output_size = (int)output_size_64;
     }
     else {
@@ -506,6 +506,7 @@ static const MVMIOOps op_table = {
     NULL,
     NULL,
     NULL,
+    NULL,
     gc_free
 };
 
@@ -657,6 +658,7 @@ typedef struct {
     uv_tcp_t         *socket;
     MVMThreadContext *tc;
     int               work_idx;
+    int               backlog;
 } ListenInfo;
 
 /* Handles an incoming connection. */
@@ -739,7 +741,7 @@ static void listen_setup(MVMThreadContext *tc, uv_loop_t *loop, MVMObject *async
     }
 
     /* Start listening. */
-    uv_listen((uv_stream_t *)li->socket, 128, on_connection);
+    uv_listen((uv_stream_t *)li->socket, li->backlog, on_connection);
 }
 
 /* Stops listening. */
@@ -769,7 +771,7 @@ static const MVMAsyncTaskOps listen_op_table = {
 /* Initiates an async socket listener. */
 MVMObject * MVM_io_socket_listen_async(MVMThreadContext *tc, MVMObject *queue,
                                        MVMObject *schedulee, MVMString *host,
-                                       MVMint64 port, MVMObject *async_type) {
+                                       MVMint64 port, MVMint32 backlog, MVMObject *async_type) {
     MVMAsyncTask *task;
     ListenInfo   *li;
 
@@ -795,6 +797,7 @@ MVMObject * MVM_io_socket_listen_async(MVMThreadContext *tc, MVMObject *queue,
     task->body.ops  = &listen_op_table;
     li              = MVM_calloc(1, sizeof(ListenInfo));
     li->dest        = dest;
+    li->backlog     = backlog;
     task->body.data = li;
 
     /* Hand the task off to the event loop. */
