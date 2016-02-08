@@ -72,7 +72,6 @@ MVM_PUBLIC MVMCallsite *MVM_callsite_get_common(MVMThreadContext *tc, MVMCommonC
             return &obj_str_callsite;
         default:
             MVM_exception_throw_adhoc(tc, "get_common_callsite: id %d unknown", id);
-            return NULL;
     }
 }
 
@@ -187,6 +186,7 @@ MVM_PUBLIC void MVM_callsite_try_intern(MVMThreadContext *tc, MVMCallsite **cs_p
              * the interned one. */
             if (num_flags)
                 MVM_free(cs->arg_flags);
+            MVM_free(cs->arg_names);
             MVM_free(cs);
             *cs_ptr = interns->by_arity[num_flags][i];
             found = 1;
