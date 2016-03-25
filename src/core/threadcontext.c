@@ -10,8 +10,8 @@ MVMThreadContext * MVM_tc_create(MVMInstance *instance) {
     /* Associate with VM instance. */
     tc->instance = instance;
 
-    /* Set up GC nursery. */
-    tc->nursery_fromspace   = MVM_calloc(1, MVM_NURSERY_SIZE);
+    /* Set up GC nursery. We only allocate tospace initially, and allocate
+     * fromspace the first time this thread GCs, provided it ever does. */
     tc->nursery_tospace     = MVM_calloc(1, MVM_NURSERY_SIZE);
     tc->nursery_alloc       = tc->nursery_tospace;
     tc->nursery_alloc_limit = (char *)tc->nursery_alloc + MVM_NURSERY_SIZE;
@@ -59,12 +59,13 @@ void MVM_tc_destroy(MVMThreadContext *tc) {
     MVM_free(tc->temproots);
     MVM_free(tc->gen2roots);
 
-    /* Free any memory allocated for NFAs. */
+    /* Free any memory allocated for NFAs and multi-dim indices. */
     MVM_free(tc->nfa_done);
     MVM_free(tc->nfa_curst);
     MVM_free(tc->nfa_nextst);
     MVM_free(tc->nfa_fates);
     MVM_free(tc->nfa_longlit);
+    MVM_free(tc->multi_dim_indices);
 
     /* Free per-thread lexotic cache. */
     MVM_free(tc->lexotic_cache);

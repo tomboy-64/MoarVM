@@ -101,7 +101,6 @@ MVM_PUBLIC const MVMint32 MVM_jit_support(void);
 #include "core/alloc.h"
 #include "core/frame.h"
 #include "core/validation.h"
-#include "core/compunit.h"
 #include "core/bytecode.h"
 #include "core/bytecodedump.h"
 #include "core/ops.h"
@@ -126,6 +125,7 @@ MVM_PUBLIC const MVMint32 MVM_jit_support(void);
 #include "6model/sc.h"
 #include "6model/serialization.h"
 #include "6model/parametric.h"
+#include "core/compunit.h"
 #include "gc/gen2.h"
 #include "gc/allocation.h"
 #include "gc/worklist.h"
@@ -184,6 +184,7 @@ MVM_PUBLIC const MVMint32 MVM_jit_support(void);
 #include "profiler/instrument.h"
 #include "profiler/log.h"
 #include "profiler/profile.h"
+#include "profiler/heapsnapshot.h"
 #include "instrument/crossthreadwrite.h"
 
 MVMObject *MVM_backend_config(MVMThreadContext *tc);

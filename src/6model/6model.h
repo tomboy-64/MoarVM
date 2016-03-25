@@ -342,6 +342,10 @@ struct MVMSTable {
     /* Also info we need to lazily deserialize the method cache. */
     MVMuint32                method_cache_offset;
     MVMSerializationContext *method_cache_sc;
+
+    /* A string associated with this STable for debugging purposes.
+     * Usually the name of the class this belongs to. */
+    char *debug_name;
 };
 
 /* The representation operations table. Note that representations are not
@@ -617,6 +621,10 @@ struct MVMREPROps {
     /* Does this representation reference frames (either MVMStaticFrame or
      * MVMFrame)? */
     MVMuint32 refs_frames;
+
+    /* Optional API, for representations that allocate additonal memory and
+     * want to report its size for debugging purposes. */
+    MVMuint64 (*unmanaged_size) (MVMThreadContext *tc, MVMSTable *st, void *data);
 };
 
 /* Various handy macros for getting at important stuff. */

@@ -183,7 +183,6 @@ static void gc_free(MVMThreadContext *tc, MVMObject *obj) {
     /* If it's not fully deserialized, none of the following can apply. */
     if (!body->fully_deserialized)
         return;
-    MVM_free(body->instr_offsets);
     MVM_free(body->handlers);
     MVM_free(body->static_env);
     MVM_free(body->static_env_flags);
@@ -218,6 +217,40 @@ static void compose(MVMThreadContext *tc, MVMSTable *st, MVMObject *info) {
     /* Nothing to do for this REPR. */
 }
 
+/* Calculates the non-GC-managed memory we hold on to. */
+static MVMuint64 unmanaged_size(MVMThreadContext *tc, MVMSTable *st, void *data) {
+    MVMStaticFrameBody *body = (MVMStaticFrameBody *)data;
+    MVMuint64 size = 0;
+
+    if (body->fully_deserialized) {
+        size += sizeof(MVMuint16) * body->num_locals;
+        size += sizeof(MVMuint16) * body->num_lexicals;
+
+        if (body->bytecode != body->orig_bytecode)
+            size += body->bytecode_size;
+
+        size += sizeof(MVMLexicalRegistry *) * body->num_lexicals;
+
+        size += sizeof(MVMLexicalRegistry) * HASH_CNT(hash_handle, body->lexical_names);
+
+        size += sizeof(MVMFrameHandler) * body->num_handlers;
+
+        /* XXX i *think* the annotations are just a pointer into the serialized
+         * blob, so don't actually count it towards the unmanaged size. */
+        /*
+        size += sizeof(MVMuint8) * body->num_annotations
+        */
+        size += body->env_size; /* static_env */
+        size += body->num_lexicals; /* static_env_flags */
+
+        /* XXX i believe we have to add the size of spesh candidates here,
+         * which also has a bunch of unmanaged data of its own. */
+        /* XXX also include instrumentation data */
+    }
+
+    return size;
+}
+
 /* Initializes the representation. */
 const MVMREPROps * MVMStaticFrame_initialize(MVMThreadContext *tc) {
     return &this_repr;
@@ -250,4 +283,5 @@ static const MVMREPROps this_repr = {
     "MVMStaticFrame", /* name */
     MVM_REPR_ID_MVMStaticFrame,
     0, /* refs_frames */
+    unmanaged_size, /* unmanaged_size */
 };

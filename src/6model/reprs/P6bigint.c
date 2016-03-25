@@ -1,5 +1,9 @@
 #include "moar.h"
 
+#ifndef MIN
+   #define MIN(x,y) ((x)<(y)?(x):(y))
+#endif
+
 /* A forced 64-bit version of mp_get_long, since on some platforms long is
  * not all that long. */
 static MVMuint64 mp_get_int64(MVMThreadContext *tc, mp_int * a) {
@@ -223,6 +227,15 @@ static void deserialize(MVMThreadContext *tc, MVMSTable *st, MVMObject *root, vo
     }
 }
 
+/* Calculates the non-GC-managed memory we hold on to. */
+static MVMuint64 unmanaged_size(MVMThreadContext *tc, MVMSTable *st, void *data) {
+    MVMP6bigintBody *body = (MVMP6bigintBody *)data;
+    if (MVM_BIGINT_IS_BIG(body))
+        return body->u.bigint->alloc;
+    else
+        return 0;
+}
+
 /* Initializes the representation. */
 const MVMREPROps * MVMP6bigint_initialize(MVMThreadContext *tc) {
     return &this_repr;
@@ -265,4 +278,5 @@ static const MVMREPROps this_repr = {
     "P6bigint", /* name */
     MVM_REPR_ID_P6bigint,
     0, /* refs_frames */
+    unmanaged_size, /* unmanaged_size */
 };

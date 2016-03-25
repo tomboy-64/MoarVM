@@ -1,6 +1,10 @@
 #include "moar.h"
 #include <math.h>
 
+#ifndef MAX
+    #define MAX(x,y) ((x)>(y)?(x):(y))
+#endif
+
 /* Taken from mp_set_long, but portably accepts a 64-bit number. */
 int MVM_bigint_mp_set_uint64(mp_int * a, MVMuint64 b) {
   int     x, res;
@@ -841,12 +845,14 @@ MVMnum64 MVM_bigint_to_num(MVMThreadContext *tc, MVMObject *a) {
     }
 }
 
-void MVM_bigint_from_num(MVMThreadContext *tc, MVMObject *a, MVMnum64 n) {
-    MVMP6bigintBody *ba = get_bigint_body(tc, a);
+MVMObject *MVM_bigint_from_num(MVMThreadContext *tc, MVMObject *result_type, MVMnum64 n) {
+    MVMObject * const result = MVM_repr_alloc_init(tc, result_type);
+    MVMP6bigintBody *ba = get_bigint_body(tc, result);
     mp_int *ia = MVM_malloc(sizeof(mp_int));
     mp_init(ia);
     from_num(n, ia);
     store_bigint_result(ba, ia);
+    return result;
 }
 
 MVMnum64 MVM_bigint_div_num(MVMThreadContext *tc, MVMObject *a, MVMObject *b) {

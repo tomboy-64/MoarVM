@@ -125,6 +125,7 @@ static const MVMREPROps this_repr = {
     "MVMCode", /* name */
     MVM_REPR_ID_MVMCode,
     1, /* refs_frames */
+    NULL, /* unmanaged_size */
 };
 
 MVM_PUBLIC MVMObject * MVM_code_location(MVMThreadContext *tc, MVMObject *code) {
@@ -154,7 +155,7 @@ MVM_PUBLIC MVMObject * MVM_code_location(MVMThreadContext *tc, MVMObject *code) 
         MVM_gc_root_temp_push(tc, (MVMCollectable **)&linenumber_key);
 
         if (ann && str_idx < cu->body.num_strings) {
-            filename = cu->body.strings[str_idx];
+            filename = MVM_cu_string(tc, cu, str_idx);
         } else {
             filename = cu->body.filename;
         }

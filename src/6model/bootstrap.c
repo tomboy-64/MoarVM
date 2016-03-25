@@ -59,6 +59,7 @@ static void new_type(MVMThreadContext *tc, MVMCallsite *callsite, MVMRegister *a
     /* See if we were given a name; put it into the meta-object if so. */
     name = name_arg.exists ? name_arg.arg.s : instance->str_consts.anon;
     MVM_ASSIGN_REF(tc, &(HOW->header), ((MVMKnowHOWREPR *)HOW)->body.name, name);
+    type_object->st->debug_name = MVM_string_utf8_encode_C_string(tc, name);
 
     /* Set .WHO to an empty hash. */
     BOOTHash = tc->instance->boot_types.BOOTHash;
@@ -309,7 +310,7 @@ static void bootstrap_KnowHOW(MVMThreadContext *tc) {
 
     /* Stash the created KnowHOW. */
     tc->instance->KnowHOW = (MVMObject *)knowhow;
-    MVM_gc_root_add_permanent(tc, (MVMCollectable **)&tc->instance->KnowHOW);
+    MVM_gc_root_add_permanent_desc(tc, (MVMCollectable **)&tc->instance->KnowHOW, "KnowHOW");
 }
 
 /* Takes a stub object that existed before we had bootstrapped things and
@@ -327,6 +328,7 @@ static void add_meta_object(MVMThreadContext *tc, MVMObject *type_obj, char *nam
         /* Set name. */
         name_str = MVM_string_ascii_decode_nt(tc, tc->instance->VMString, name);
         MVM_ASSIGN_REF(tc, &(meta_obj->header), ((MVMKnowHOWREPR *)meta_obj)->body.name, name_str);
+        type_obj->st->debug_name = strdup(name);
     });
 }
 
@@ -444,7 +446,9 @@ static void create_KnowHOWAttribute(MVMThreadContext *tc) {
 
         /* Stash the created type object. */
         tc->instance->KnowHOWAttribute = (MVMObject *)type_obj;
-        MVM_gc_root_add_permanent(tc, (MVMCollectable **)&tc->instance->KnowHOWAttribute);
+        MVM_gc_root_add_permanent_desc(tc,
+            (MVMCollectable **)&tc->instance->KnowHOWAttribute,
+            "KnowHOWAttribute");
     });
 }
 
@@ -524,7 +528,7 @@ static void string_consts(MVMThreadContext *tc) {
 /* Set up some strings. */
 #define string_creator(variable, name) do { \
     instance->str_consts.variable = MVM_string_ascii_decode_nt(tc, tc->instance->VMString, (name)); \
-    MVM_gc_root_add_permanent(tc, (MVMCollectable **)&(instance->str_consts.variable)); \
+    MVM_gc_root_add_permanent_desc(tc, (MVMCollectable **)&(instance->str_consts.variable), "VM string constant"); \
 } while (0)
 
     string_creator(empty, "");
@@ -570,6 +574,10 @@ static void string_consts(MVMThreadContext *tc) {
     string_creator(dimensions, "dimensions");
     string_creator(ready, "ready");
     string_creator(multidim, "multidim");
+    string_creator(entry_point, "entry_point");
+    string_creator(kind, "kind");
+    string_creator(instrumented, "instrumented");
+    string_creator(heap, "heap");
 }
 
 /* Drives the overall bootstrap process. */
@@ -631,7 +639,7 @@ void MVM_6model_bootstrap(MVMThreadContext *tc) {
     /* Give stub types meta-objects. */
 #define meta_objectifier(tc, slot, name) do { \
     add_meta_object((tc), (tc)->instance->slot, (name)); \
-    MVM_gc_root_add_permanent((tc), (MVMCollectable **)&(tc)->instance->slot); \
+    MVM_gc_root_add_permanent_desc((tc), (MVMCollectable **)&(tc)->instance->slot, name); \
 } while (0)
     meta_objectifier(tc, VMString, "VMString");
     meta_objectifier(tc, VMNull, "VMNull");
@@ -665,13 +673,19 @@ void MVM_6model_bootstrap(MVMThreadContext *tc) {
     /* Bootstrap typed arrays. */
     tc->instance->boot_types.BOOTIntArray = boot_typed_array(tc, "BOOTIntArray",
         tc->instance->boot_types.BOOTInt);
-    MVM_gc_root_add_permanent(tc, (MVMCollectable **)&tc->instance->boot_types.BOOTIntArray);
+    MVM_gc_root_add_permanent_desc(tc,
+        (MVMCollectable **)&tc->instance->boot_types.BOOTIntArray,
+        "BOOTIntArray");
     tc->instance->boot_types.BOOTNumArray = boot_typed_array(tc, "BOOTNumArray",
         tc->instance->boot_types.BOOTNum);
-    MVM_gc_root_add_permanent(tc, (MVMCollectable **)&tc->instance->boot_types.BOOTNumArray);
+    MVM_gc_root_add_permanent_desc(tc,
+        (MVMCollectable **)&tc->instance->boot_types.BOOTNumArray,
+        "BOOTNumArray");
     tc->instance->boot_types.BOOTStrArray = boot_typed_array(tc, "BOOTStrArray",
         tc->instance->boot_types.BOOTStr);
-    MVM_gc_root_add_permanent(tc, (MVMCollectable **)&tc->instance->boot_types.BOOTStrArray);
+    MVM_gc_root_add_permanent_desc(tc,
+        (MVMCollectable **)&tc->instance->boot_types.BOOTStrArray,
+        "BOOTStrArray");
 
     /* Set up HLL roles. */
     STABLE(tc->instance->boot_types.BOOTInt)->hll_role   = MVM_HLL_ROLE_INT;

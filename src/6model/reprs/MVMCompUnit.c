@@ -42,11 +42,9 @@ static void gc_mark(MVMThreadContext *tc, MVMSTable *st, void *data, MVMGCWorkli
     MVMCompUnitBody *body = (MVMCompUnitBody *)data;
     MVMuint32 i;
 
-    /* Add code refs and static frames to the worklists. */
-    for (i = 0; i < body->num_frames; i++) {
-        MVM_gc_worklist_add(tc, worklist, &body->frames[i]);
+    /* Add code refs to the worklists. */
+    for (i = 0; i < body->num_frames; i++)
         MVM_gc_worklist_add(tc, worklist, &body->coderefs[i]);
-    }
 
     /* Add extop names to the worklist. */
     for (i = 0; i < body->num_extops; i++)
@@ -86,7 +84,6 @@ static void gc_free(MVMThreadContext *tc, MVMObject *obj) {
         MVM_callsite_destroy(cs);
     }
 
-    MVM_free(body->frames);
     MVM_free(body->coderefs);
     MVM_free(body->callsites);
     MVM_free(body->extops);
@@ -129,6 +126,48 @@ static void compose(MVMThreadContext *tc, MVMSTable *st, MVMObject *info) {
     /* Nothing to do for this REPR. */
 }
 
+/* Calculates the non-GC-managed memory we hold on to. */
+static MVMuint64 unmanaged_size(MVMThreadContext *tc, MVMSTable *st, void *data) {
+    MVMCompUnitBody *body = (MVMCompUnitBody *)data;
+    MVMuint64 size = 0;
+    MVMuint32 index;
+
+    size += sizeof(MVMCallsite *) * body->num_callsites;
+    for (index = 0; index < body->num_callsites; index++) {
+        MVMCallsite *cs = body->callsites[index];
+        if (cs && !cs->is_interned) {
+            size += sizeof(MVMCallsite);
+
+            size += sizeof(MVMCallsiteEntry) * cs->flag_count;
+
+            size += sizeof(MVMString *) * MVM_callsite_num_nameds(tc, cs);
+        }
+    }
+
+    if (body->deallocate == MVM_DEALLOCATE_FREE) {
+        /* XXX do we want to count mmapped data for the bytecode segment, too? */
+        size += body->data_size;
+    }
+
+    size += sizeof(MVMObject *) * body->num_frames;
+
+    size += sizeof(MVMExtOpRecord *) * body->num_extops;
+
+    size += sizeof(MVMString *) * body->num_strings;
+
+    size += body->serialized_size;
+
+    /* since SCs are GC-managed themselves, only the array containing them
+     * is added to the unmanaged size here. */
+    size += body->num_scs * (
+            sizeof(MVMSerializationContext *) +     /* scs */
+            sizeof(MVMSerializationContextBody *) + /* scs_to_resolve */
+            sizeof(MVMint32)                        /* sc_handle_idxs */
+            );
+
+    return size;
+}
+
 /* Initializes the representation. */
 const MVMREPROps * MVMCompUnit_initialize(MVMThreadContext *tc) {
     return &this_repr;
@@ -161,4 +200,5 @@ static const MVMREPROps this_repr = {
     "MVMCompUnit", /* name */
     MVM_REPR_ID_MVMCompUnit,
     0, /* refs_frames */
+    unmanaged_size,
 };
