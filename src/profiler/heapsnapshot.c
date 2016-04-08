@@ -296,7 +296,9 @@ static void process_object(MVMThreadContext *tc, MVMHeapSnapshotState *ss,
         /* Use object's gc_mark function to find what it references. */
         /* XXX We'll also add an API for getting better information, e.g.
          * attribute names. */
-        if (REPR(obj)->gc_mark) {
+        if (REPR(obj)->describe_refs)
+            REPR(obj)->describe_refs(tc, ss, STABLE(obj), OBJECT_BODY(obj));
+        else if (REPR(obj)->gc_mark) {
             REPR(obj)->gc_mark(tc, STABLE(obj), OBJECT_BODY(obj), ss->gcwl);
             process_gc_worklist(tc, ss, NULL);
         }
@@ -505,12 +507,19 @@ static void process_workitems(MVMThreadContext *tc, MVMHeapSnapshotState *ss) {
                             push_workitem(tc, ss,
                                 MVM_SNAPSHOT_COL_KIND_THREAD_ROOTS,
                                 cur_thread->body.tc));
+                        add_reference_const_cstr(tc, ss, "Inter-generational Roots",
+                            push_workitem(tc, ss,
+                                MVM_SNAPSHOT_COL_KIND_INTERGEN_ROOTS,
+                                cur_thread->body.tc));
                     }
                     cur_thread = cur_thread->body.next;
                 }
 
                 break;
             }
+            case MVM_SNAPSHOT_COL_KIND_INTERGEN_ROOTS:
+                MVM_gc_root_add_gen2s_to_snapshot(tc, ss);
+                break;
             default:
                 MVM_panic(1, "Unknown heap snapshot worklist item kind %d", item.kind);
         }
